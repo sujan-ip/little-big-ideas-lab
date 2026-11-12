@@ -275,7 +275,7 @@ function TrendChart({ meals }: { meals: MealRecord[] }) {
   const right = 20;
   const top = 14;
   const bottom = 34;
-  const max = Math.max(12, ...meals.map((meal) => Math.max(meal.preparedKg ?? 0, meal.wastedKg ?? 0)) * 1.15);
+  const max = Math.max(12, ...meals.map((meal) => Math.max(meal.preparedKg ?? 0, meal.wastedKg ?? 0) * 1.15));
   const x = (index: number) => left + (meals.length < 2 ? 0 : (index * (width - left - right)) / (meals.length - 1));
   const y = (value: number) => top + ((height - top - bottom) * (max - value)) / max;
   const pointsFor = (pick: (meal: MealRecord) => number | null) => meals.map((meal, index) => `${x(index)},${y(pick(meal) ?? 0)}`).join(" ");
