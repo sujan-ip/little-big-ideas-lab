@@ -8,7 +8,7 @@ describe("FoodWise demo metrics and donation safety", () => {
 
     expect(metrics.listedKg).toBe(45);
     expect(metrics.collectedKg).toBe(20);
-    expect(metrics.wastedKg).toBe(36.8);
+    expect(metrics.wastedKg).toBeCloseTo(36.8, 8);
     expect(metrics.successfulDonations).toBe(2);
   });
 
