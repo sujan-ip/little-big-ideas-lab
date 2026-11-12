@@ -28,3 +28,7 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## FoodWise prototype
+
+- Keep FoodWise records in the browser-local demo store and keep the display explicitly labeled as sample data; the academic prototype intentionally has no real account or persistence service.
