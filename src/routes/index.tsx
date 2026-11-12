@@ -4,7 +4,6 @@ import {
   Apple,
   ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
   BarChart3,
   Bell,
   CalendarDays,
@@ -143,7 +142,7 @@ function FoodWiseApp() {
     if (page === "Overview") return <OverviewPage data={data} metrics={metrics} onNavigate={navigate} />;
     if (page === "Food Waste Analytics") return <AnalyticsPage data={data} />;
     if (page === "Add Meal Record") return <MealForm onSave={addMeal} onCancel={() => navigate("Overview")} />;
-    if (page === "Surplus Food Listings") return <ListingsPage data={data} onAdd={() => navigate("Find Donations")} onStatus={updateDonation} />;
+    if (page === "Surplus Food Listings") return <ListingsPage data={data} onAdd={() => navigate("Find Donations")} onStatus={updateDonation} onCreate={(donation) => setData((current) => ({ ...current, donations: [donation, ...current.donations] }))} />;
     if (page === "Find Donations") return <FindDonationsPage data={data} onStatus={updateDonation} />;
     if (page === "Donation History") return <DonationHistoryPage donations={data.donations} />;
     if (page === "Reports") return <ReportsPage data={data} metrics={metrics} />;
@@ -277,7 +276,7 @@ function TrendChart({ meals }: { meals: MealRecord[] }) {
   const top = 14;
   const bottom = 34;
   const max = Math.max(12, ...meals.map((meal) => Math.max(meal.preparedKg ?? 0, meal.wastedKg ?? 0)) * 1.15);
-  const x = (index: number) => left + (meals.length < 2 ? 0 : index * (width - left - right)) / (meals.length - 1);
+  const x = (index: number) => left + (meals.length < 2 ? 0 : (index * (width - left - right)) / (meals.length - 1));
   const y = (value: number) => top + ((height - top - bottom) * (max - value)) / max;
   const pointsFor = (pick: (meal: MealRecord) => number | null) => meals.map((meal, index) => `${x(index)},${y(pick(meal) ?? 0)}`).join(" ");
   return <div className="w-full overflow-hidden"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Chart comparing food prepared and wasted over the latest recorded meals" className="h-[205px] w-full overflow-visible sm:h-[220px]">
@@ -361,7 +360,7 @@ function MealForm({ onSave, onCancel }: { onSave: (meal: MealRecord, donation: D
   </>;
 }
 
-function ListingsPage({ data, onAdd, onStatus }: { data: FoodWiseData; onAdd: () => void; onStatus: (id: string, status: Donation["status"], receiver?: string) => void }) {
+function ListingsPage({ data, onAdd, onStatus, onCreate }: { data: FoodWiseData; onAdd: () => void; onStatus: (id: string, status: Donation["status"], receiver?: string) => void; onCreate: (donation: Donation) => void }) {
   const [showForm, setShowForm] = useState(false);
   const [category, setCategory] = useState("all");
   const [saved, setSaved] = useState(false);
@@ -374,13 +373,12 @@ function ListingsPage({ data, onAdd, onStatus }: { data: FoodWiseData; onAdd: ()
     const quantity = Number(get("quantity"));
     if (quantity <= 0) { setError("Enter a quantity greater than zero."); return; }
     const donation: Donation = { id: `d-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`, donor: get("donor"), foodName: get("foodName"), description: get("description"), category: get("category") as FoodCategory, quantity, unit: get("unit") as "kg" | "portions", preparedAt: get("preparedAt"), deadline: get("deadline"), storage: get("storage"), allergens: get("allergens") || "Not declared", location: get("location"), pickupWindow: get("pickupWindow"), contact: get("contact"), receiver: "", status: "Available" };
-    onAddDonation(donation);
+    onCreate(donation);
     event.currentTarget.reset();
     setSaved(true);
     setError("");
     setShowForm(false);
   };
-  function onAddDonation(donation: Donation) { (window as Window & { __foodWiseAddDonation?: (donation: Donation) => void }).__foodWiseAddDonation?.(donation); }
   const active = data.donations.filter((donation) => donation.status === "Available" || donation.status === "Claimed");
   const visible = category === "all" ? active : active.filter((donation) => donation.category === category);
   return <>
