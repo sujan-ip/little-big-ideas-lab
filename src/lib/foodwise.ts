@@ -10,6 +10,7 @@ export type MealRecord = {
   expectedStudents: number | null;
   peopleServed: number | null;
   preparedKg: number | null;
+  consumedKg?: number | null;
   wastedKg: number | null;
   context: string;
   specialEvent: string;
@@ -61,11 +62,13 @@ export const DEMO_DATA: FoodWiseData = {
 
 export function calculateMetrics(data: FoodWiseData) {
   const prepared = data.meals.reduce((sum, meal) => sum + (meal.preparedKg ?? 0), 0);
+  const consumed = data.meals.reduce((sum, meal) => sum + (meal.consumedKg ?? 0), 0);
   const measuredWaste = data.meals.reduce((sum, meal) => sum + (meal.wastedKg ?? 0), 0);
   const listedKg = data.donations.filter((donation) => donation.unit === "kg" && donation.status !== "Cancelled").reduce((sum, donation) => sum + donation.quantity, 0);
   const collectedKg = data.donations.filter((donation) => donation.unit === "kg" && donation.status === "Collected").reduce((sum, donation) => sum + donation.quantity, 0);
   return {
     preparedKg: data.meals.some((meal) => meal.preparedKg !== null) ? prepared : null,
+    consumedKg: data.meals.some((meal) => meal.consumedKg != null) ? consumed : null,
     wastedKg: data.meals.some((meal) => meal.wastedKg !== null) ? measuredWaste : null,
     wasteRate: prepared > 0 && data.meals.some((meal) => meal.wastedKg !== null) ? (measuredWaste / prepared) * 100 : null,
     listedKg,
@@ -80,20 +83,21 @@ export function calculateMetrics(data: FoodWiseData) {
 export function makeDonationFromMeal(
   meal: MealRecord,
   safeAndSuitable: boolean,
+  safeSurplusKg: number | null,
   donor: string,
   location: string,
   contact: string,
   preparedAt: string,
   deadline: string,
 ): Donation | null {
-  if (!safeAndSuitable || meal.wastedKg === null || meal.wastedKg <= 0) return null;
+  if (!safeAndSuitable || safeSurplusKg === null || safeSurplusKg <= 0) return null;
   return {
     id: `d-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
     donor,
     foodName: meal.menuItems || `${meal.mealType} surplus`,
     description: `Surplus from ${meal.mealType.toLowerCase()} meal service.`,
     category: "Cooked food",
-    quantity: meal.wastedKg,
+    quantity: safeSurplusKg,
     unit: "kg",
     preparedAt,
     deadline,
@@ -109,9 +113,9 @@ export function makeDonationFromMeal(
 
 export function csvForRecords(data: FoodWiseData) {
   const rows = [
-    ["Record type", "Date", "Name / meal", "Quantity / prepared (kg)", "Waste (kg)", "Status"],
-    ...data.meals.map((meal) => ["Meal", meal.date, `${meal.mealType}: ${meal.menuItems}`, String(meal.preparedKg ?? ""), String(meal.wastedKg ?? ""), meal.demo ? "Demo" : "Recorded"]),
-    ...data.donations.map((donation) => ["Donation", donation.preparedAt.slice(0, 10), donation.foodName, `${donation.quantity} ${donation.unit}`, "", donation.status]),
+    ["Record type", "Date", "Name / meal", "Quantity / prepared (kg)", "Consumed (kg)", "Waste (kg)", "Status"],
+    ...data.meals.map((meal) => ["Meal", meal.date, `${meal.mealType}: ${meal.menuItems}`, String(meal.preparedKg ?? ""), String(meal.consumedKg ?? ""), String(meal.wastedKg ?? ""), meal.demo ? "Demo" : "Recorded"]),
+    ...data.donations.map((donation) => ["Donation", donation.preparedAt.slice(0, 10), donation.foodName, `${donation.quantity} ${donation.unit}`, "", "", donation.status]),
   ];
   return rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\n");
 }

@@ -48,6 +48,7 @@ import {
 } from "@/lib/foodwise";
 
 type PageKey = "Overview" | "Food Waste Analytics" | "Add Meal Record" | "Surplus Food Listings" | "Find Donations" | "Donation History" | "Reports" | "Guidelines";
+type TrendRange = "daily" | "weekly" | "monthly";
 
 const navigation: { label: PageKey; icon: typeof BarChart3; group: string }[] = [
   { label: "Overview", icon: BarChart3, group: "WORKSPACE" },
@@ -82,6 +83,7 @@ function FoodWiseApp() {
   const [page, setPage] = useState<PageKey>("Overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [reportedDonationIds, setReportedDonationIds] = useState<Set<string>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -138,12 +140,17 @@ function FoodWiseApp() {
     setNotice(status === "Claimed" ? "Donation claimed. Pickup details are available below." : status === "Collected" ? "Collection confirmed. The food is now recorded as collected." : `Listing marked ${status.toLowerCase()}.`);
   };
 
+  const reportDonation = (id: string) => {
+    setReportedDonationIds((current) => new Set(current).add(id));
+    setNotice("Concern noted for this demo listing. Contact the donor and relevant local authority about safety concerns.");
+  };
+
   const renderPage = (): ReactNode => {
     if (page === "Overview") return <OverviewPage data={data} metrics={metrics} onNavigate={navigate} />;
     if (page === "Food Waste Analytics") return <AnalyticsPage data={data} />;
     if (page === "Add Meal Record") return <MealForm onSave={addMeal} onCancel={() => navigate("Overview")} />;
     if (page === "Surplus Food Listings") return <ListingsPage data={data} onAdd={() => navigate("Find Donations")} onStatus={updateDonation} onCreate={(donation) => setData((current) => ({ ...current, donations: [donation, ...current.donations] }))} />;
-    if (page === "Find Donations") return <FindDonationsPage data={data} onStatus={updateDonation} />;
+    if (page === "Find Donations") return <FindDonationsPage data={data} onStatus={updateDonation} onReport={reportDonation} reportedDonationIds={reportedDonationIds} />;
     if (page === "Donation History") return <DonationHistoryPage donations={data.donations} />;
     if (page === "Reports") return <ReportsPage data={data} metrics={metrics} />;
     return <GuidelinesPage />;
@@ -275,16 +282,17 @@ function TrendChart({ meals }: { meals: MealRecord[] }) {
   const right = 20;
   const top = 14;
   const bottom = 34;
-  const max = Math.max(12, ...meals.map((meal) => Math.max(meal.preparedKg ?? 0, meal.wastedKg ?? 0) * 1.15));
+  const max = Math.max(12, ...meals.map((meal) => Math.max(meal.preparedKg ?? 0, meal.consumedKg ?? 0, meal.wastedKg ?? 0) * 1.15));
   const x = (index: number) => left + (meals.length < 2 ? 0 : (index * (width - left - right)) / (meals.length - 1));
   const y = (value: number) => top + ((height - top - bottom) * (max - value)) / max;
-  const pointsFor = (pick: (meal: MealRecord) => number | null) => meals.map((meal, index) => `${x(index)},${y(pick(meal) ?? 0)}`).join(" ");
-  return <div className="w-full overflow-hidden"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Chart comparing food prepared and wasted over the latest recorded meals" className="h-[205px] w-full overflow-visible sm:h-[220px]">
+  const pointsFor = (pick: (meal: MealRecord) => number | null | undefined) => meals.map((meal, index) => `${x(index)},${y(pick(meal) ?? 0)}`).join(" ");
+  return <div className="w-full overflow-hidden"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Chart comparing food prepared, consumed, and wasted across recorded meals" className="h-[205px] w-full overflow-visible sm:h-[220px]">
     {[0, 0.33, 0.66, 1].map((fraction) => <g key={fraction}><line x1={left} x2={width - right} y1={top + (height - top - bottom) * fraction} y2={top + (height - top - bottom) * fraction} className="fw-chart-grid" /><text x={left - 7} y={top + (height - top - bottom) * fraction + 4} textAnchor="end" className="fill-muted-foreground" fontSize="9">{Math.round(max * (1 - fraction))}</text></g>)}
     <polyline points={pointsFor((meal) => meal.preparedKg)} className="fw-chart-prepared" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <polyline points={pointsFor((meal) => meal.consumedKg)} className="stroke-chart-3" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     <polyline points={pointsFor((meal) => meal.wastedKg)} className="fw-chart-waste" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    {meals.map((meal, index) => <g key={meal.id}><circle cx={x(index)} cy={y(meal.preparedKg ?? 0)} r="3.5" className="fill-chart-1" /><circle cx={x(index)} cy={y(meal.wastedKg ?? 0)} r="3.5" className="fill-chart-2" /><text x={x(index)} y={height - 8} textAnchor="middle" className="fill-muted-foreground" fontSize="9">{weekdayShort(meal.date)}</text></g>)}
-  </svg><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-1" />Prepared</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-2" />Waste</span><span className="ml-auto">kg · measured entries only</span></div></div>;
+    {meals.map((meal, index) => <g key={meal.id}><circle cx={x(index)} cy={y(meal.preparedKg ?? 0)} r="3.5" className="fill-chart-1" /><circle cx={x(index)} cy={y(meal.consumedKg ?? 0)} r="3.5" className="fill-chart-3" /><circle cx={x(index)} cy={y(meal.wastedKg ?? 0)} r="3.5" className="fill-chart-2" /><text x={x(index)} y={height - 8} textAnchor="middle" className="fill-muted-foreground" fontSize="9">{trendLabel(meal.date, "daily")}</text></g>)}
+  </svg><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-1" />Prepared</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-3" />Consumed</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-2" />Waste</span><span className="ml-auto">kg · measured entries only</span></div></div>;
 }
 
 function MealTypeBreakdown({ meals }: { meals: MealRecord[] }) {
@@ -294,16 +302,22 @@ function MealTypeBreakdown({ meals }: { meals: MealRecord[] }) {
 }
 
 function AnalyticsPage({ data }: { data: FoodWiseData }) {
+  const [range, setRange] = useState<TrendRange>("daily");
   const metrics = calculateMetrics(data);
+  const trendMeals = aggregateMeals(data.meals, range);
   const byMeal = mealTypes.map((type) => ({ type, rows: data.meals.filter((meal) => meal.mealType === type && meal.wastedKg !== null) }));
   const highest = [...data.meals].filter((meal) => meal.wastedKg !== null).sort((a, b) => (b.wastedKg ?? 0) - (a.wastedKg ?? 0)).slice(0, 3);
+  const byMenu = [...new Set(data.meals.map((meal) => meal.menuItems.trim()).filter(Boolean))].map((menu) => {
+    const rows = data.meals.filter((meal) => meal.menuItems.trim() === menu && meal.wastedKg !== null);
+    return { menu, rows, waste: rows.reduce((sum, meal) => sum + (meal.wastedKg ?? 0), 0) };
+  }).filter((entry) => entry.rows.length >= 2).sort((a, b) => b.waste - a.waste).slice(0, 5);
   return <>
     <PageHeading eyebrow="PREVENT AVOIDABLE WASTE" title="Food waste analytics" description="Use measured meal records to spot patterns and make thoughtful preparation adjustments." action={<DownloadReport data={data} />} />
-    <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4"><MetricCard title="Measured prepared" value={formatNumber(metrics.preparedKg)} unit="kg" note="Sum of recorded measurements" icon={Utensils} /><MetricCard title="Measured waste" value={formatNumber(metrics.wastedKg)} unit="kg" note="Unmeasured entries are excluded" icon={ArrowDownRight} tone="warm" /><MetricCard title="Measured waste rate" value={metrics.wasteRate === null ? "—" : metrics.wasteRate.toFixed(1)} unit={metrics.wasteRate === null ? "" : "%"} note="Waste divided by prepared" icon={BarChart3} tone="cool" /><MetricCard title="Meal records" value={String(data.meals.length)} note={`${data.meals.filter((meal) => meal.demo).length} sample · ${data.meals.filter((meal) => !meal.demo).length} saved`} icon={ClipboardList} tone="neutral" /></div>
-    <div className="mb-4 grid gap-4 xl:grid-cols-[1.6fr_0.8fr]"><section className="rounded-md border border-border/80 bg-card p-4 sm:p-5"><div className="mb-3"><h2 className="text-sm font-semibold">Prepared versus waste</h2><p className="mt-1 text-[11px] text-muted-foreground">Measured food weights per meal record · kg</p></div><TrendChart meals={[...data.meals].slice(0, 10).reverse()} /></section><section className="rounded-md border border-border/80 bg-card p-4 sm:p-5"><h2 className="text-sm font-semibold">Waste by meal type</h2><p className="mb-4 mt-1 text-[11px] text-muted-foreground">Compare meals with recorded measurements</p><div className="space-y-4">{byMeal.map(({ type, rows }) => { const total = rows.reduce((sum, meal) => sum + (meal.wastedKg ?? 0), 0); const avg = rows.length ? total / rows.length : 0; return <div key={type} className="border-b border-border/50 pb-3 last:border-0"><div className="flex justify-between text-xs"><span>{type}</span><span className="font-medium tabular-nums">{total.toFixed(1)} kg</span></div><p className="mt-1 text-[10px] text-muted-foreground">{rows.length} records{rows.length ? ` · ${avg.toFixed(1)} kg average` : " · no measured entries"}</p></div>; })}</div></section></div>
+    <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-5"><MetricCard title="Measured prepared" value={formatNumber(metrics.preparedKg)} unit="kg" note="Sum of recorded measurements" icon={Utensils} /><MetricCard title="Measured consumed" value={formatNumber(metrics.consumedKg)} unit="kg" note="Only explicitly recorded consumption" icon={CheckCircle2} tone="cool" /><MetricCard title="Measured waste" value={formatNumber(metrics.wastedKg)} unit="kg" note="Unmeasured entries are excluded" icon={ArrowDownRight} tone="warm" /><MetricCard title="Measured waste rate" value={metrics.wasteRate === null ? "—" : metrics.wasteRate.toFixed(1)} unit={metrics.wasteRate === null ? "" : "%"} note="Waste divided by prepared" icon={BarChart3} tone="cool" /><MetricCard title="Meal records" value={String(data.meals.length)} note={`${data.meals.filter((meal) => meal.demo).length} sample · ${data.meals.filter((meal) => !meal.demo).length} saved`} icon={ClipboardList} tone="neutral" /></div>
+    <div className="mb-4 grid gap-4 xl:grid-cols-[1.6fr_0.8fr]"><section className="rounded-md border border-border/80 bg-card p-4 sm:p-5"><div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-semibold">Prepared, consumed & waste trends</h2><p className="mt-1 text-[11px] text-muted-foreground">Measured food weights · kg · unknown weights omitted from totals</p></div><label className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">View<Select value={range} onValueChange={(value) => setRange(value as TrendRange)}><SelectTrigger aria-label="Trend time range" className="h-8 w-[124px] text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="daily">Daily</SelectItem><SelectItem value="weekly">Weekly</SelectItem><SelectItem value="monthly">Monthly</SelectItem></SelectContent></Select></label></div><TrendChart meals={trendMeals} /></section><section className="rounded-md border border-border/80 bg-card p-4 sm:p-5"><h2 className="text-sm font-semibold">Waste by meal type</h2><p className="mb-4 mt-1 text-[11px] text-muted-foreground">Compare meals with recorded measurements</p><div className="space-y-4">{byMeal.map(({ type, rows }) => { const total = rows.reduce((sum, meal) => sum + (meal.wastedKg ?? 0), 0); const avg = rows.length ? total / rows.length : 0; return <div key={type} className="border-b border-border/50 pb-3 last:border-0"><div className="flex justify-between text-xs"><span>{type}</span><span className="font-medium tabular-nums">{total.toFixed(1)} kg</span></div><p className="mt-1 text-[10px] text-muted-foreground">{rows.length} records{rows.length ? ` · ${avg.toFixed(1)} kg average` : " · no measured entries"}</p></div>; })}</div></section></div>
     <div className="grid gap-4 xl:grid-cols-2"><section className="overflow-hidden rounded-md border border-border/80 bg-card"><div className="border-b border-border/60 px-4 py-3.5"><h2 className="text-sm font-semibold">Highest-waste meals</h2><p className="mt-1 text-[10px] text-muted-foreground">Ranked among entries with measured waste only</p></div>{highest.length ? highest.map((meal) => <div key={meal.id} className="flex items-start justify-between gap-4 border-b border-border/50 px-4 py-3 last:border-0"><div><p className="text-xs font-medium">{meal.menuItems}</p><p className="mt-1 text-[10px] text-muted-foreground">{meal.mealType} · {dateShort(meal.date)}</p></div><span className="shrink-0 text-xs font-semibold tabular-nums">{meal.wastedKg?.toFixed(1)} kg</span></div>) : <EmptyState title="No measured meals yet" detail="Add a meal record with a waste measurement to see comparisons." />}</section>
       <section className="rounded-md border border-primary/20 bg-accent/40 p-4 sm:p-5"><div className="flex gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary"><Sparkles className="h-4 w-4" /></div><div><h2 className="text-sm font-semibold">Practical suggestion</h2><p className="mt-2 text-xs leading-5 text-muted-foreground">{highest[0] ? `Review the ${highest[0].mealType.toLowerCase()} plan for “${highest[0].menuItems}.” Its ${highest[0].wastedKg?.toFixed(1)} kg recorded waste makes it a useful starting point for checking portions and attendance.` : "As more meals are recorded, compare similar menus and attendance before adjusting batch sizes."}</p><p className="mt-3 text-[10px] font-medium text-primary">Rule-based demo guidance · not a machine-learning prediction</p></div></div></section></div>
-    <div className="mt-4"><MealTable meals={data.meals} /></div>
+    <div className="grid gap-4 xl:grid-cols-2"><section className="overflow-hidden rounded-md border border-border/80 bg-card"><div className="border-b border-border/60 px-4 py-3.5"><h2 className="text-sm font-semibold">Waste by recorded menu</h2><p className="mt-1 text-[10px] text-muted-foreground">Repeated menu names only; no waste is divided across ingredients</p></div>{byMenu.length ? byMenu.map((entry) => <div key={entry.menu} className="flex items-start justify-between gap-3 border-b border-border/50 px-4 py-3 last:border-0"><div className="min-w-0"><p className="text-xs font-medium">{entry.menu}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.rows.length} measured records · {formatNumber(entry.waste / entry.rows.length)} kg average</p></div><span className="shrink-0 text-xs font-semibold tabular-nums">{formatNumber(entry.waste)} kg</span></div>) : <EmptyState title="Not enough repeated menus yet" detail="Add the same menu on multiple meal records to compare its measured waste." />}</section><MealTable meals={data.meals} /></div>
   </>;
 }
 
