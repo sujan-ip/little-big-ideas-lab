@@ -62,11 +62,13 @@ export const DEMO_DATA: FoodWiseData = {
 
 export function calculateMetrics(data: FoodWiseData) {
   const prepared = data.meals.reduce((sum, meal) => sum + (meal.preparedKg ?? 0), 0);
+  const consumed = data.meals.reduce((sum, meal) => sum + (meal.consumedKg ?? 0), 0);
   const measuredWaste = data.meals.reduce((sum, meal) => sum + (meal.wastedKg ?? 0), 0);
   const listedKg = data.donations.filter((donation) => donation.unit === "kg" && donation.status !== "Cancelled").reduce((sum, donation) => sum + donation.quantity, 0);
   const collectedKg = data.donations.filter((donation) => donation.unit === "kg" && donation.status === "Collected").reduce((sum, donation) => sum + donation.quantity, 0);
   return {
     preparedKg: data.meals.some((meal) => meal.preparedKg !== null) ? prepared : null,
+    consumedKg: data.meals.some((meal) => meal.consumedKg != null) ? consumed : null,
     wastedKg: data.meals.some((meal) => meal.wastedKg !== null) ? measuredWaste : null,
     wasteRate: prepared > 0 && data.meals.some((meal) => meal.wastedKg !== null) ? (measuredWaste / prepared) * 100 : null,
     listedKg,
