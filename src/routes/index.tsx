@@ -48,6 +48,7 @@ import {
 } from "@/lib/foodwise";
 
 type PageKey = "Overview" | "Food Waste Analytics" | "Add Meal Record" | "Surplus Food Listings" | "Find Donations" | "Donation History" | "Reports" | "Guidelines";
+type TrendRange = "daily" | "weekly" | "monthly";
 
 const navigation: { label: PageKey; icon: typeof BarChart3; group: string }[] = [
   { label: "Overview", icon: BarChart3, group: "WORKSPACE" },
@@ -82,6 +83,7 @@ function FoodWiseApp() {
   const [page, setPage] = useState<PageKey>("Overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [reportedDonationIds, setReportedDonationIds] = useState<Set<string>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -138,12 +140,17 @@ function FoodWiseApp() {
     setNotice(status === "Claimed" ? "Donation claimed. Pickup details are available below." : status === "Collected" ? "Collection confirmed. The food is now recorded as collected." : `Listing marked ${status.toLowerCase()}.`);
   };
 
+  const reportDonation = (id: string) => {
+    setReportedDonationIds((current) => new Set(current).add(id));
+    setNotice("Concern noted for this demo listing. Contact the donor and relevant local authority about safety concerns.");
+  };
+
   const renderPage = (): ReactNode => {
     if (page === "Overview") return <OverviewPage data={data} metrics={metrics} onNavigate={navigate} />;
     if (page === "Food Waste Analytics") return <AnalyticsPage data={data} />;
     if (page === "Add Meal Record") return <MealForm onSave={addMeal} onCancel={() => navigate("Overview")} />;
     if (page === "Surplus Food Listings") return <ListingsPage data={data} onAdd={() => navigate("Find Donations")} onStatus={updateDonation} onCreate={(donation) => setData((current) => ({ ...current, donations: [donation, ...current.donations] }))} />;
-    if (page === "Find Donations") return <FindDonationsPage data={data} onStatus={updateDonation} />;
+    if (page === "Find Donations") return <FindDonationsPage data={data} onStatus={updateDonation} onReport={reportDonation} reportedDonationIds={reportedDonationIds} />;
     if (page === "Donation History") return <DonationHistoryPage donations={data.donations} />;
     if (page === "Reports") return <ReportsPage data={data} metrics={metrics} />;
     return <GuidelinesPage />;
