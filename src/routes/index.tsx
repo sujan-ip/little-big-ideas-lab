@@ -286,14 +286,59 @@ function TrendChart({ meals, range = "daily" }: { meals: MealRecord[]; range?: T
   const max = Math.max(12, ...meals.map((meal) => Math.max(meal.preparedKg ?? 0, meal.consumedKg ?? 0, meal.wastedKg ?? 0) * 1.15));
   const x = (index: number) => left + (meals.length < 2 ? 0 : (index * (width - left - right)) / (meals.length - 1));
   const y = (value: number) => top + ((height - top - bottom) * (max - value)) / max;
-  const pointsFor = (pick: (meal: MealRecord) => number | null | undefined) => meals.map((meal, index) => `${x(index)},${y(pick(meal) ?? 0)}`).join(" ");
+  const seriesFor = (pick: (meal: MealRecord) => number | null | undefined) => {
+    const segments: string[][] = [];
+    meals.forEach((meal, index) => {
+      const value = pick(meal);
+      if (value === null || value === undefined) {
+        if (segments.at(-1)?.length === 1) segments.pop();
+        return;
+      }
+      if (!segments.length || (segments.at(-1)?.length ?? 0) === 0) segments.push([]);
+      segments.at(-1)?.push(`${x(index)},${y(value)}`);
+    });
+    return segments.filter((segment) => segment.length > 1);
+  };
+  const preparedSeries = seriesFor((meal) => meal.preparedKg);
+  const consumedSeries = seriesFor((meal) => meal.consumedKg);
+  const wasteSeries = seriesFor((meal) => meal.wastedKg);
   return <div className="w-full overflow-hidden"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Chart comparing food prepared, consumed, and wasted across recorded meals" className="h-[205px] w-full overflow-visible sm:h-[220px]">
     {[0, 0.33, 0.66, 1].map((fraction) => <g key={fraction}><line x1={left} x2={width - right} y1={top + (height - top - bottom) * fraction} y2={top + (height - top - bottom) * fraction} className="fw-chart-grid" /><text x={left - 7} y={top + (height - top - bottom) * fraction + 4} textAnchor="end" className="fill-muted-foreground" fontSize="9">{Math.round(max * (1 - fraction))}</text></g>)}
-    <polyline points={pointsFor((meal) => meal.preparedKg)} className="fw-chart-prepared" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    <polyline points={pointsFor((meal) => meal.consumedKg)} className="stroke-chart-3" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    <polyline points={pointsFor((meal) => meal.wastedKg)} className="fw-chart-waste" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    {preparedSeries.map((points, index) => <polyline key={`prepared-${index}`} points={points.join(" ")} className="fw-chart-prepared" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />)}
+    {consumedSeries.map((points, index) => <polyline key={`consumed-${index}`} points={points.join(" ")} className="stroke-chart-3" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />)}
+    {wasteSeries.map((points, index) => <polyline key={`waste-${index}`} points={points.join(" ")} className="fw-chart-waste" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />)}
     {meals.map((meal, index) => <g key={meal.id}>{meal.preparedKg !== null && <circle cx={x(index)} cy={y(meal.preparedKg)} r="3.5" className="fill-chart-1" />}{meal.consumedKg != null && <circle cx={x(index)} cy={y(meal.consumedKg)} r="3.5" className="fill-chart-3" />}{meal.wastedKg !== null && <circle cx={x(index)} cy={y(meal.wastedKg)} r="3.5" className="fill-chart-2" />}<text x={x(index)} y={height - 8} textAnchor="middle" className="fill-muted-foreground" fontSize="9">{trendLabel(meal.date, range)}</text></g>)}
   </svg><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-1" />Prepared</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-3" />Consumed</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-2" />Waste</span><span className="ml-auto">kg · measured entries only</span></div></div>;
+}
+
+function aggregateMeals(meals: MealRecord[], range: TrendRange): MealRecord[] {
+  const buckets = new Map<string, MealRecord[]>();
+  meals.forEach((meal) => {
+    const date = new Date(`${meal.date}T12:00:00`);
+    const bucketDate = new Date(date);
+    if (range === "weekly") bucketDate.setDate(bucketDate.getDate() - ((bucketDate.getDay() + 6) % 7));
+    const key = range === "monthly" ? meal.date.slice(0, 7) : range === "weekly" ? bucketDate.toISOString().slice(0, 10) : meal.date;
+    buckets.set(key, [...(buckets.get(key) ?? []), meal]);
+  });
+  return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, records], index) => {
+    const sum = (field: "preparedKg" | "consumedKg" | "wastedKg") => {
+      const measured = records.map((meal) => meal[field]).filter((value): value is number => value !== null && value !== undefined);
+      return measured.length ? measured.reduce((total, value) => total + value, 0) : null;
+    };
+    return {
+      ...records[0],
+      id: `${range}-${key}-${index}`,
+      date: range === "monthly" ? `${key}-01` : key,
+      preparedKg: sum("preparedKg"),
+      consumedKg: sum("consumedKg"),
+      wastedKg: sum("wastedKg"),
+    };
+  });
+}
+
+function trendLabel(date: string, range: TrendRange) {
+  if (range === "monthly") return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+  return dateShort(date);
 }
 
 function MealTypeBreakdown({ meals }: { meals: MealRecord[] }) {
