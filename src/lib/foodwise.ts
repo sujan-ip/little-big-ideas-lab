@@ -89,6 +89,9 @@ export function makeDonationFromMeal(
   contact: string,
   preparedAt: string,
   deadline: string,
+  storage: string,
+  allergens: string,
+  pickupWindow: string,
 ): Donation | null {
   if (!safeAndSuitable || safeSurplusKg === null || safeSurplusKg <= 0) return null;
   return {
@@ -101,10 +104,10 @@ export function makeDonationFromMeal(
     unit: "kg",
     preparedAt,
     deadline,
-    storage: "Disclose current storage conditions before pickup",
-    allergens: "Please confirm ingredients and allergens",
+    storage,
+    allergens,
     location,
-    pickupWindow: "Coordinate pickup with the donor",
+    pickupWindow,
     contact,
     receiver: "",
     status: "Available",
