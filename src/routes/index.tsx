@@ -309,7 +309,7 @@ function TrendChart({ meals, range = "daily" }: { meals: MealRecord[]; range?: T
     {consumedSeries.map((points, index) => <polyline key={`consumed-${index}`} points={points.join(" ")} className="stroke-chart-3" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />)}
     {wasteSeries.map((points, index) => <polyline key={`waste-${index}`} points={points.join(" ")} className="fw-chart-waste" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />)}
     {meals.map((meal, index) => <g key={meal.id}>{meal.preparedKg !== null && <circle cx={x(index)} cy={y(meal.preparedKg)} r="3.5" className="fill-chart-1" />}{meal.consumedKg != null && <circle cx={x(index)} cy={y(meal.consumedKg)} r="3.5" className="fill-chart-3" />}{meal.wastedKg !== null && <circle cx={x(index)} cy={y(meal.wastedKg)} r="3.5" className="fill-chart-2" />}{(meal.preparedKg !== null || meal.consumedKg != null || meal.wastedKg !== null) && <text x={x(index)} y={height - 8} textAnchor="middle" className="fill-muted-foreground" fontSize="9">{trendLabel(meal.date, range)}</text>}</g>)}
-  </svg><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-1" />Prepared</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-3" />Consumed</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-2" />Waste</span><span className="ml-auto">kg · measured entries only</span></div></div>;
+    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-1" />Prepared</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-3" />Consumed</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-2" />Waste</span><span className="ml-auto">kg · measured entries only</span></div></div>;
 }
 
 function aggregateMeals(meals: MealRecord[], range: TrendRange): MealRecord[] {
@@ -607,6 +607,12 @@ function dateTimeShort(value: string) {
   if (!value) return "—";
   const parsed = new Date(value);
   return Number.isNaN(parsed.valueOf()) ? value : parsed.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+function localDateValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
 function weekday(value: string) {
