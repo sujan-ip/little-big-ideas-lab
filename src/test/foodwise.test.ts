@@ -9,6 +9,7 @@ describe("FoodWise demo metrics and donation safety", () => {
     expect(metrics.listedKg).toBe(45);
     expect(metrics.collectedKg).toBe(20);
     expect(metrics.wastedKg).toBeCloseTo(36.8, 8);
+    expect(metrics.consumedKg).toBeNull();
     expect(metrics.successfulDonations).toBe(2);
   });
 
@@ -26,9 +27,19 @@ describe("FoodWise demo metrics and donation safety", () => {
       specialEvent: "",
     };
 
-    expect(makeDonationFromMeal(meal, false, "Kitchen", "Main gate", "Desk", "2026-11-11T12:00", "2026-11-11T16:00")).toBeNull();
-    expect(makeDonationFromMeal({ ...meal, wastedKg: null }, true, "Kitchen", "Main gate", "Desk", "2026-11-11T12:00", "2026-11-11T16:00")).toBeNull();
-    expect(makeDonationFromMeal({ ...meal, wastedKg: 0 }, true, "Kitchen", "Main gate", "Desk", "2026-11-11T12:00", "2026-11-11T16:00")).toBeNull();
-    expect(makeDonationFromMeal(meal, true, "Kitchen", "Main gate", "Desk", "2026-11-11T12:00", "2026-11-11T16:00")?.quantity).toBe(2.5);
+    const listingDetails = ["Kitchen", "Main gate", "Desk", "2026-11-11T12:00", "2026-11-11T16:00", "Refrigerated", "None declared", "1:00–3:00 pm"] as const;
+    expect(makeDonationFromMeal(meal, false, 2.5, ...listingDetails)).toBeNull();
+    expect(makeDonationFromMeal(meal, true, null, ...listingDetails)).toBeNull();
+    expect(makeDonationFromMeal(meal, true, 0, ...listingDetails)).toBeNull();
+    expect(makeDonationFromMeal(meal, true, 1.2, ...listingDetails)?.quantity).toBe(1.2);
+    expect(makeDonationFromMeal(meal, true, 1.2, ...listingDetails)?.quantity).not.toBe(meal.wastedKg);
+  });
+
+  it("keeps explicit consumed-weight totals separate and blank until measured", () => {
+    const meal = { ...DEMO_DATA.meals[0], consumedKg: 62 };
+    const metrics = calculateMetrics({ meals: [meal], donations: [] });
+
+    expect(metrics.consumedKg).toBe(62);
+    expect(metrics.wastedKg).toBe(8.2);
   });
 });
