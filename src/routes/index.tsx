@@ -255,7 +255,7 @@ function OverviewPage({ data, metrics, onNavigate }: { data: FoodWiseData; metri
     <div className="mb-5 grid gap-4 xl:grid-cols-[1.65fr_1fr]">
       <section className="min-w-0 rounded-md border border-border/80 bg-card p-4 sm:p-5">
         <div className="mb-4 flex items-start justify-between gap-2"><div><h2 className="text-sm font-semibold">Weekly food waste trend</h2><p className="mt-1 text-[11px] text-muted-foreground">Measured kilograms · most recent 7 records</p></div><button type="button" onClick={() => onNavigate("Food Waste Analytics")} className="shrink-0 text-[11px] font-semibold text-primary">View analytics <ArrowRight className="ml-1 inline h-3 w-3" /></button></div>
-        <TrendChart meals={weekMeals} />
+        <TrendChart meals={weekMeals} range="weekly" />
       </section>
       <MealTypeBreakdown meals={data.meals} />
     </div>
@@ -323,19 +323,21 @@ function aggregateMeals(meals: MealRecord[], range: TrendRange): MealRecord[] {
     buckets.set(key, [...(buckets.get(key) ?? []), meal]);
   });
   return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, records], index) => {
+    const first = records[0];
+    if (!first) return null;
     const sum = (field: "preparedKg" | "consumedKg" | "wastedKg") => {
       const measured = records.map((meal) => meal[field]).filter((value): value is number => value !== null && value !== undefined);
       return measured.length ? measured.reduce((total, value) => total + value, 0) : null;
     };
     return {
-      ...records[0],
+      ...first,
       id: `${range}-${key}-${index}`,
       date: range === "monthly" ? `${key}-01` : key,
       preparedKg: sum("preparedKg"),
       consumedKg: sum("consumedKg"),
       wastedKg: sum("wastedKg"),
     };
-  });
+  }).filter((meal): meal is MealRecord => meal !== null);
 }
 
 function trendLabel(date: string, range: TrendRange) {
@@ -375,8 +377,7 @@ function AnalyticsPage({ data }: { data: FoodWiseData }) {
 }
 
 function MealForm({ onSave, onCancel }: { onSave: (meal: MealRecord, donation: Donation | null) => void; onCancel: () => void }) {
-  const today = localDateValue();
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState("");
   const [mealType, setMealType] = useState<MealType>("Lunch");
   const [expected, setExpected] = useState("420");
   const [served, setServed] = useState("397");
@@ -387,16 +388,22 @@ function MealForm({ onSave, onCancel }: { onSave: (meal: MealRecord, donation: D
   const [consumed, setConsumed] = useState("");
   const [wasted, setWasted] = useState("");
   const [safeSurplus, setSafeSurplus] = useState("");
-  const [preparedAt, setPreparedAt] = useState(`${today}T12:00`);
+  const [preparedAt, setPreparedAt] = useState("");
   const [specialEvent, setSpecialEvent] = useState("");
   const [donor, setDonor] = useState("Greenfield Hostel Kitchen");
   const [location, setLocation] = useState("Greenfield Hostel, North Gate");
   const [contact, setContact] = useState("");
-  const [deadline, setDeadline] = useState(`${today}T17:00`);
+  const [deadline, setDeadline] = useState("");
   const [storage, setStorage] = useState("");
   const [allergens, setAllergens] = useState("");
   const [pickupWindow, setPickupWindow] = useState("");
   const [error, setError] = useState("");
+  useEffect(() => {
+    const today = localDateValue();
+    setDate(today);
+    setPreparedAt(`${today}T12:00`);
+    setDeadline(`${today}T17:00`);
+  }, []);
   const expectedNum = Number(expected);
   const servedNum = Number(served);
   const parseOptional = (value: string) => value.trim() === "" ? null : Number(value);
@@ -411,7 +418,7 @@ function MealForm({ onSave, onCancel }: { onSave: (meal: MealRecord, donation: D
       return;
     }
     const meal: MealRecord = { id: `m-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`, date, mealType, menuItems: menu.trim(), expectedStudents: expectedNum, peopleServed: servedNum, preparedKg: preparedNum, consumedKg: consumedNum, wastedKg: wastedNum, context, specialEvent, demo: false };
-    if (safeForDonation && (!storage.trim() || !allergens.trim() || !pickupWindow.trim() || !contact.trim() || !location.trim() || !donor.trim() || !deadline || !preparedAt || new Date(deadline) <= new Date(preparedAt))) {
+    if (safeForDonation && (!storage.trim() || !allergens.trim() || !pickupWindow.trim() || !contact.trim() || !location.trim() || !donor.trim() || !deadline || !preparedAt || new Date(deadline) <= new Date(preparedAt) || (preparedNum !== null && safeSurplusNum !== null && safeSurplusNum > preparedNum))) {
       setError("Add the donor, pickup, storage, allergen, and deadline details before creating a listing.");
       return;
     }
