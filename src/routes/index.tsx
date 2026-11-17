@@ -255,7 +255,7 @@ function OverviewPage({ data, metrics, onNavigate }: { data: FoodWiseData; metri
     <div className="mb-5 grid gap-4 xl:grid-cols-[1.65fr_1fr]">
       <section className="min-w-0 rounded-md border border-border/80 bg-card p-4 sm:p-5">
         <div className="mb-4 flex items-start justify-between gap-2"><div><h2 className="text-sm font-semibold">Weekly food waste trend</h2><p className="mt-1 text-[11px] text-muted-foreground">Measured kilograms · most recent 7 records</p></div><button type="button" onClick={() => onNavigate("Food Waste Analytics")} className="shrink-0 text-[11px] font-semibold text-primary">View analytics <ArrowRight className="ml-1 inline h-3 w-3" /></button></div>
-        <TrendChart meals={weekMeals} />
+        <TrendChart meals={weekMeals} range="weekly" />
       </section>
       <MealTypeBreakdown meals={data.meals} />
     </div>
@@ -309,6 +309,7 @@ function TrendChart({ meals, range = "daily" }: { meals: MealRecord[]; range?: T
     {consumedSeries.map((points, index) => <polyline key={`consumed-${index}`} points={points.join(" ")} className="stroke-chart-3" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />)}
     {wasteSeries.map((points, index) => <polyline key={`waste-${index}`} points={points.join(" ")} className="fw-chart-waste" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />)}
     {meals.map((meal, index) => <g key={meal.id}>{meal.preparedKg !== null && <circle cx={x(index)} cy={y(meal.preparedKg)} r="3.5" className="fill-chart-1" />}{meal.consumedKg != null && <circle cx={x(index)} cy={y(meal.consumedKg)} r="3.5" className="fill-chart-3" />}{meal.wastedKg !== null && <circle cx={x(index)} cy={y(meal.wastedKg)} r="3.5" className="fill-chart-2" />}{(meal.preparedKg !== null || meal.consumedKg != null || meal.wastedKg !== null) && <text x={x(index)} y={height - 8} textAnchor="middle" className="fill-muted-foreground" fontSize="9">{trendLabel(meal.date, range)}</text>}</g>)}
+  </svg>
     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-1" />Prepared</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-3" />Consumed</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-chart-2" />Waste</span><span className="ml-auto">kg · measured entries only</span></div></div>;
 }
 
@@ -322,19 +323,21 @@ function aggregateMeals(meals: MealRecord[], range: TrendRange): MealRecord[] {
     buckets.set(key, [...(buckets.get(key) ?? []), meal]);
   });
   return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, records], index) => {
+    const first = records[0];
+    if (!first) return null;
     const sum = (field: "preparedKg" | "consumedKg" | "wastedKg") => {
       const measured = records.map((meal) => meal[field]).filter((value): value is number => value !== null && value !== undefined);
       return measured.length ? measured.reduce((total, value) => total + value, 0) : null;
     };
     return {
-      ...records[0],
+      ...first,
       id: `${range}-${key}-${index}`,
       date: range === "monthly" ? `${key}-01` : key,
       preparedKg: sum("preparedKg"),
       consumedKg: sum("consumedKg"),
       wastedKg: sum("wastedKg"),
     };
-  });
+  }).filter((meal): meal is MealRecord => meal !== null);
 }
 
 function trendLabel(date: string, range: TrendRange) {
@@ -374,8 +377,7 @@ function AnalyticsPage({ data }: { data: FoodWiseData }) {
 }
 
 function MealForm({ onSave, onCancel }: { onSave: (meal: MealRecord, donation: Donation | null) => void; onCancel: () => void }) {
-  const today = localDateValue();
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState("");
   const [mealType, setMealType] = useState<MealType>("Lunch");
   const [expected, setExpected] = useState("420");
   const [served, setServed] = useState("397");
@@ -386,16 +388,22 @@ function MealForm({ onSave, onCancel }: { onSave: (meal: MealRecord, donation: D
   const [consumed, setConsumed] = useState("");
   const [wasted, setWasted] = useState("");
   const [safeSurplus, setSafeSurplus] = useState("");
-  const [preparedAt, setPreparedAt] = useState(`${today}T12:00`);
+  const [preparedAt, setPreparedAt] = useState("");
   const [specialEvent, setSpecialEvent] = useState("");
   const [donor, setDonor] = useState("Greenfield Hostel Kitchen");
   const [location, setLocation] = useState("Greenfield Hostel, North Gate");
   const [contact, setContact] = useState("");
-  const [deadline, setDeadline] = useState(`${today}T17:00`);
+  const [deadline, setDeadline] = useState("");
   const [storage, setStorage] = useState("");
   const [allergens, setAllergens] = useState("");
   const [pickupWindow, setPickupWindow] = useState("");
   const [error, setError] = useState("");
+  useEffect(() => {
+    const today = localDateValue();
+    setDate(today);
+    setPreparedAt(`${today}T12:00`);
+    setDeadline(`${today}T17:00`);
+  }, []);
   const expectedNum = Number(expected);
   const servedNum = Number(served);
   const parseOptional = (value: string) => value.trim() === "" ? null : Number(value);
@@ -410,7 +418,7 @@ function MealForm({ onSave, onCancel }: { onSave: (meal: MealRecord, donation: D
       return;
     }
     const meal: MealRecord = { id: `m-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`, date, mealType, menuItems: menu.trim(), expectedStudents: expectedNum, peopleServed: servedNum, preparedKg: preparedNum, consumedKg: consumedNum, wastedKg: wastedNum, context, specialEvent, demo: false };
-    if (safeForDonation && (!storage.trim() || !allergens.trim() || !pickupWindow.trim() || !contact.trim() || !location.trim() || !donor.trim() || !deadline || !preparedAt || new Date(deadline) <= new Date(preparedAt))) {
+    if (safeForDonation && (!storage.trim() || !allergens.trim() || !pickupWindow.trim() || !contact.trim() || !location.trim() || !donor.trim() || !deadline || !preparedAt || new Date(deadline) <= new Date(preparedAt) || (preparedNum !== null && safeSurplusNum !== null && safeSurplusNum > preparedNum))) {
       setError("Add the donor, pickup, storage, allergen, and deadline details before creating a listing.");
       return;
     }
@@ -485,14 +493,16 @@ function DonationForm({ onSubmit, error, onCancel }: { onSubmit: (event: FormEve
 function FindDonationsPage({ data, onStatus, onReport, reportedDonationIds }: { data: FoodWiseData; onStatus: (id: string, status: Donation["status"], receiver?: string) => void; onReport: (id: string) => void; reportedDonationIds: Set<string> }) {
   const [category, setCategory] = useState("all");
   const [location, setLocation] = useState("");
+  const [quantityUnit, setQuantityUnit] = useState("all");
   const [minimum, setMinimum] = useState("");
   const [maximum, setMaximum] = useState("");
   const [deadline, setDeadline] = useState("");
-  const donations = data.donations.filter((donation) => donation.status === "Available" || donation.status === "Claimed").filter((donation) => category === "all" || donation.category === category).filter((donation) => !location || donation.location.toLowerCase().includes(location.toLowerCase())).filter((donation) => !minimum || donation.quantity >= Number(minimum)).filter((donation) => !maximum || donation.quantity <= Number(maximum)).filter((donation) => !deadline || donation.deadline.slice(0, 10) <= deadline);
+  const hasQuantityFilter = minimum !== "" || maximum !== "";
+  const donations = data.donations.filter((donation) => donation.status === "Available" || donation.status === "Claimed").filter((donation) => category === "all" || donation.category === category).filter((donation) => quantityUnit === "all" || donation.unit === quantityUnit).filter((donation) => !location || donation.location.toLowerCase().includes(location.toLowerCase())).filter((donation) => quantityUnit === "all" || !minimum || donation.quantity >= Number(minimum)).filter((donation) => quantityUnit === "all" || !maximum || donation.quantity <= Number(maximum)).filter((donation) => !deadline || donation.deadline.slice(0, 10) <= deadline);
   return <>
     <PageHeading eyebrow="RECEIVER VIEW" title="Find food donations" description="Discover safe surplus nearby and claim only what your organisation can collect and use in time." />
     <div className="mb-5 rounded-md border border-chart-2/30 bg-chart-2/10 px-3.5 py-3 text-xs"><span className="font-semibold">Receiving organisation:</span> Hope Community Kitchen <span className="ml-1 text-[10px] text-muted-foreground">· demo account</span></div>
-    <section className="mb-4 rounded-md border border-border/80 bg-card p-3.5"><div className="mb-3 flex items-center gap-2 text-xs font-semibold"><Filter className="h-4 w-4 text-primary" /> Find a suitable pickup</div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5"><label className="text-[10px] font-medium text-muted-foreground">Category<select aria-label="Filter donations by category" value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 block h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"><option value="all">All categories</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label><label className="text-[10px] font-medium text-muted-foreground">Location<Input aria-label="Filter by location" className="mt-1" placeholder="Area or pickup point" value={location} onChange={(event) => setLocation(event.target.value)} /></label><label className="text-[10px] font-medium text-muted-foreground">Minimum quantity<Input aria-label="Minimum quantity" className="mt-1" type="number" min="0" step="0.1" placeholder="Any amount" value={minimum} onChange={(event) => setMinimum(event.target.value)} /></label><label className="text-[10px] font-medium text-muted-foreground">Maximum quantity<Input aria-label="Maximum quantity" className="mt-1" type="number" min="0" step="0.1" placeholder="Any amount" value={maximum} onChange={(event) => setMaximum(event.target.value)} /></label><label className="text-[10px] font-medium text-muted-foreground">Use by date<Input aria-label="Pickup deadline filter" className="mt-1" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label></div><p className="mt-2 text-[10px] text-muted-foreground">Showing {donations.length} available {donations.length === 1 ? "listing" : "listings"}</p></section>
+    <section className="mb-4 rounded-md border border-border/80 bg-card p-3.5"><div className="mb-3 flex items-center gap-2 text-xs font-semibold"><Filter className="h-4 w-4 text-primary" /> Find a suitable pickup</div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6"><label className="text-[10px] font-medium text-muted-foreground">Category<select aria-label="Filter donations by category" value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 block h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"><option value="all">All categories</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label><label className="text-[10px] font-medium text-muted-foreground">Location<Input aria-label="Filter by location" className="mt-1" placeholder="Area or pickup point" value={location} onChange={(event) => setLocation(event.target.value)} /></label><label className="text-[10px] font-medium text-muted-foreground">Quantity unit<select aria-label="Filter quantity unit" value={quantityUnit} onChange={(event) => setQuantityUnit(event.target.value)} className="mt-1 block h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"><option value="all">All units</option><option value="kg">kg</option><option value="portions">portions</option></select></label><label className="text-[10px] font-medium text-muted-foreground">Minimum quantity<Input aria-label="Minimum quantity" className="mt-1" type="number" min="0" step="0.1" placeholder="Any amount" value={minimum} onChange={(event) => setMinimum(event.target.value)} /></label><label className="text-[10px] font-medium text-muted-foreground">Maximum quantity<Input aria-label="Maximum quantity" className="mt-1" type="number" min="0" step="0.1" placeholder="Any amount" value={maximum} onChange={(event) => setMaximum(event.target.value)} /></label><label className="text-[10px] font-medium text-muted-foreground">Use by date<Input aria-label="Pickup deadline filter" className="mt-1" type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label></div>{hasQuantityFilter && quantityUnit === "all" && <p role="status" className="mt-2 text-[10px] text-muted-foreground">Select kg or portions to apply quantity limits fairly.</p>}<p className="mt-2 text-[10px] text-muted-foreground">Showing {donations.length} available {donations.length === 1 ? "listing" : "listings"}</p></section>
     {donations.length ? <div className="grid gap-3 lg:grid-cols-2">{donations.map((donation) => <DonationCard key={donation.id} donation={donation} receiverView onStatus={onStatus} onReport={onReport} reported={reportedDonationIds.has(donation.id)} />)}</div> : <EmptyState title="No matching donations" detail="Adjust your filters, or check again when a nearby donor adds a listing." />}
   </>;
 }
@@ -552,7 +562,7 @@ function DonationTable({ donations }: { donations: Donation[] }) {
 }
 
 function MealTable({ meals }: { meals: MealRecord[] }) {
-  return <section className="overflow-hidden rounded-md border border-border/80 bg-card"><div className="border-b border-border/60 px-4 py-3.5"><h2 className="text-sm font-semibold">Meal record summary</h2><p className="mt-1 text-[10px] text-muted-foreground">Measured entries only; blank weights remain unreported</p></div><div className="max-h-[330px] overflow-auto"><table className="w-full min-w-[460px] text-left text-xs"><thead className="sticky top-0 bg-card text-[10px] text-muted-foreground"><tr><th className="px-4 py-2.5 font-medium">MEAL / DATE</th><th className="px-3 py-2.5 font-medium">MENU</th><th className="px-3 py-2.5 text-right font-medium">PREP.</th><th className="px-4 py-2.5 text-right font-medium">WASTE</th></tr></thead><tbody>{meals.map((meal) => <tr key={meal.id} className="border-t border-border/60"><td className="px-4 py-2.5"><span className="font-medium">{meal.mealType}</span><span className="mt-0.5 block text-[10px] text-muted-foreground">{dateShort(meal.date)} · {meal.demo ? "Demo" : "Saved"}</span></td><td className="max-w-[160px] truncate px-3 py-2.5 text-muted-foreground">{meal.menuItems}</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(meal.preparedKg)}</td><td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(meal.wastedKg)}</td></tr>)}</tbody></table></div></section>;
+  return <section className="overflow-hidden rounded-md border border-border/80 bg-card"><div className="border-b border-border/60 px-4 py-3.5"><h2 className="text-sm font-semibold">Meal record summary</h2><p className="mt-1 text-[10px] text-muted-foreground">Measured entries only; blank weights remain unreported</p></div><div className="max-h-[330px] overflow-auto"><table className="w-full min-w-[520px] text-left text-xs"><thead className="sticky top-0 bg-card text-[10px] text-muted-foreground"><tr><th className="px-4 py-2.5 font-medium">MEAL / DATE</th><th className="px-3 py-2.5 font-medium">MENU</th><th className="px-3 py-2.5 text-right font-medium">PREP.</th><th className="px-3 py-2.5 text-right font-medium">CONSUMED</th><th className="px-4 py-2.5 text-right font-medium">WASTE</th></tr></thead><tbody>{meals.map((meal) => <tr key={meal.id} className="border-t border-border/60"><td className="px-4 py-2.5"><span className="font-medium">{meal.mealType}</span><span className="mt-0.5 block text-[10px] text-muted-foreground">{dateShort(meal.date)} · {meal.demo ? "Demo" : "Saved"}</span></td><td className="max-w-[160px] truncate px-3 py-2.5 text-muted-foreground">{meal.menuItems}</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(meal.preparedKg)}</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(meal.consumedKg ?? null)}</td><td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(meal.wastedKg)}</td></tr>)}</tbody></table></div></section>;
 }
 
 function DownloadReport({ data }: { data: FoodWiseData }) {
